@@ -1,21 +1,22 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 
 namespace Biblioteka
 {
     public class Player
     {
-        private string username { get; set; }
+        public string username { get; set; }
 
-        public int udpPort { get; set; }
+        public Socket tcpSocket { get; set; }
 
-        public Player(string username, int udpPort)
+        public Player(string username, Socket tcpSocket)
         {
             this.username = username;
-            this.udpPort = udpPort;
+            this.tcpSocket = tcpSocket;
         }
         public void showPlayer()
         {
-            Console.WriteLine("Player: " + username);
+            Console.WriteLine(" Igrac: " + username);
         }
     }
 }
