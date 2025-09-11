@@ -9,6 +9,9 @@ namespace Biblioteka
 
         public Socket tcpSocket { get; set; }
 
+        public int Points { get; set; } = 0;
+        public int Wins { get; set; } = 0;
+
         public Player(string username, Socket tcpSocket)
         {
             this.username = username;
