@@ -4,6 +4,9 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
+using System.IO;
+using System.Runtime.Serialization.Formatters.Binary;
+using System.Collections.Generic;
 using Biblioteka;
 
 namespace Client
@@ -103,11 +106,9 @@ namespace Client
                 udpSocket.Bind(localEndPoint);
                 udpSocket.Blocking = false;
 
-                Console.WriteLine($"UDP socket vezan na port {udpPort}");
-                Console.WriteLine("Pritisnite ENTER da počnete igru...");
-                Console.ReadLine(); // Čeka da korisnik pritisne ENTER
-                
-                gameRunning = true;
+                    Console.WriteLine($"UDP socket vezan na port {udpPort}");
+                    Console.WriteLine($"Server port: {udpPort - 1000}");
+                    gameRunning = true;
 
                 // Pokretanje thread-a za slušanje UDP poruka
                 Thread udpListenerThread = new Thread(ListenForUdpMessages);
@@ -130,36 +131,51 @@ namespace Client
             }
         }
 
-        // Metoda za slušanje UDP poruka od servera (stanje igre)
+        // Metoda za slušanje UDP poruka od servera (stanje igre) - stil sa vežbi
         private void ListenForUdpMessages()
         {
             try
             {
                 while (gameRunning)
                 {
-                    if (udpSocket != null && udpSocket.Available > 0)
+                    List<Socket> checkRead = new List<Socket> { udpSocket };
+                    List<Socket> checkError = new List<Socket> { udpSocket };
+                    
+                    Socket.Select(checkRead, null, checkError, 1000);
+                    
+                    if (checkRead.Count > 0)
                     {
                         byte[] buffer = new byte[1024];
                         EndPoint remoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
                         int receivedBytes = udpSocket.ReceiveFrom(buffer, ref remoteEndPoint);
                         
                         string jsonData = Encoding.UTF8.GetString(buffer, 0, receivedBytes);
+                        Console.WriteLine($"Primljena poruka od servera: {jsonData}");
+                        
                         var newState = JsonSerializer.Deserialize<GameState>(jsonData);
                         if (newState != null)
                         {
                             currentGameState = newState;
+                            Console.WriteLine($"Ball pozicija: ({newState.BallX}, {newState.BallY})");
                         }
                     }
-                    Thread.Sleep(50); // 20 FPS - manje CPU usage
+                    
+                    if (checkError.Count > 0)
+                    {
+                        Console.WriteLine($"Greška na UDP socketu: {udpSocket.LocalEndPoint}");
+                        udpSocket.Close();
+                        gameRunning = false;
+                        break;
+                    }
                 }
             }
-            catch (Exception ex)
+            catch (SocketException ex)
             {
-                Console.WriteLine($"Greška u UDP komunikaciji: {ex.Message}");
+                Console.WriteLine($"Greška u UDP komunikaciji: {ex.SocketErrorCode}");
             }
         }
 
-        // Metoda za upravljanje korisničkim inputom (strelicama)
+        // Metoda za upravljanje korisničkim inputom (strelicama) - stil sa vežbi
         private void HandleUserInput()
         {
             try
@@ -190,7 +206,7 @@ namespace Client
                             SendUdpCommand(command);
                         }
                     }
-                    Thread.Sleep(50);
+                    Thread.Sleep(100); // Manje CPU usage
                 }
             }
             catch (Exception ex)
@@ -199,32 +215,35 @@ namespace Client
             }
         }
 
-        // Metoda za slanje UDP komande serveru
+        // Metoda za slanje UDP komande serveru - stil sa vežbi
         private void SendUdpCommand(string command)
         {
             try
             {
-                if (udpSocket != null && serverEndPoint != null)
+                if (udpSocket != null)
                 {
+                    // Server prima poruke na portovima 6000+, klijenti šalju na te portove
+                    int serverPort = udpPort - 1000;
+                    IPEndPoint serverUdpEndPoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), serverPort);
                     byte[] data = Encoding.UTF8.GetBytes(command);
-                    udpSocket.SendTo(data, serverEndPoint);
+                    int bytesSent = udpSocket.SendTo(data, 0, data.Length, SocketFlags.None, serverUdpEndPoint);
+                    Console.WriteLine($"Uspesno poslato {bytesSent} bajtova komande: {command} ka {serverUdpEndPoint}");
                 }
             }
-            catch (Exception ex)
+            catch (SocketException ex)
             {
-                Console.WriteLine($"Greška pri slanju UDP komande: {ex.Message}");
+                Console.WriteLine($"Greška pri slanju UDP komande: {ex.SocketErrorCode}");
             }
         }
 
-        // Metoda za prikaz igre na terminalu
+        // Metoda za prikaz igre na terminalu - stil sa vežbi
         private void DisplayGame()
         {
             try
             {
                 while (gameRunning)
                 {
-                    // Koristimo SetCursorPosition umesto Clear za bolje performanse
-                    Console.SetCursorPosition(0, 0);
+                    Console.Clear();
                     
                     Console.WriteLine($"=== PING PONG - {username} ===");
                     Console.WriteLine($"Rezultat: {currentGameState.ScoreA} - {currentGameState.ScoreB}");
@@ -236,7 +255,7 @@ namespace Client
                     // Crtanje terena
                     DrawGameField();
                     
-                    Thread.Sleep(200); // 5 FPS za prikaz - manje treperenje
+                    Thread.Sleep(500); // 2 FPS za prikaz - manje treperenje
                 }
             }
             catch (Exception ex)
@@ -299,7 +318,7 @@ namespace Client
             }
         }
 
-        // Metoda za zatvaranje konekcija
+        // Metoda za zatvaranje konekcija - stil sa vežbi
         public void Disconnect()
         {
             gameRunning = false;
@@ -315,13 +334,13 @@ namespace Client
                     tcpSocket.Close();
                 }
             }
-            catch (Exception ex)
+            catch (SocketException ex)
             {
-                Console.WriteLine($"Greška pri zatvaranju konekcija: {ex.Message}");
+                Console.WriteLine($"Greška pri zatvaranju konekcija: {ex.SocketErrorCode}");
             }
         }
 
-        // Glavna metoda za pokretanje klijenta
+        // Glavna metoda za pokretanje klijenta - stil sa vežbi
         public static void Main(string[] args)
         {
             Console.WriteLine("=== PING PONG TURNIR - KLIJENT ===");
@@ -336,22 +355,23 @@ namespace Client
 
             Client client = new Client(username);
 
-            if (client.ConnectToServer())
+            try
             {
-                try
+                if (client.ConnectToServer())
                 {
                     client.ListenForTcpMessages();
                 }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Greška u radu klijenta: {ex.Message}");
-                }
-                finally
-                {
-                    client.Disconnect();
-                }
+            }
+            catch (SocketException ex)
+            {
+                Console.WriteLine($"Greška u radu klijenta: {ex.SocketErrorCode}");
+            }
+            finally
+            {
+                client.Disconnect();
             }
 
+            Console.WriteLine("Klijent završava sa radom");
             Console.WriteLine("Pritisnite bilo koji taster za izlaz...");
             Console.ReadKey();
         }

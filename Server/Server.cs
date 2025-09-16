@@ -8,6 +8,7 @@ using System.Text;
 using Microsoft.VisualBasic;
 using System.Drawing;
 using System.Numerics;
+using System.Threading.Tasks;
 
 
 namespace Server
@@ -132,11 +133,15 @@ namespace Server
             Socket socketA = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
             Socket socketB = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
 
+            // Server prima poruke na portovima 6000+, klijenti šalju na te portove
             IPEndPoint endPointA = new IPEndPoint(IPAddress.Any, match.UdpPortA);
             IPEndPoint endPointB = new IPEndPoint(IPAddress.Any, match.UdpPortB);
 
             socketA.Bind(endPointA);
             socketB.Bind(endPointB);
+            
+            Console.WriteLine($"Server UDP socket A vezan na port {match.UdpPortA}");
+            Console.WriteLine($"Server UDP socket B vezan na port {match.UdpPortB}");
 
             socketA.Blocking = false;
             socketB.Blocking = false;
@@ -155,29 +160,39 @@ namespace Server
             {
                 while (!kraj && (state.ScoreA < match.PointsForWin) && (state.ScoreB < match.PointsForWin))
                 {
+                    Console.WriteLine($"Rezultat: {state.ScoreA} - {state.ScoreB} (treba {match.PointsForWin})");
                     List<Socket> checkRead = new List<Socket> { socketA, socketB };
                     List<Socket> checkError = new List<Socket> { socketA, socketB };
-                    Socket.Select(checkRead, null, checkError, 50_000);
+                    Socket.Select(checkRead, null, checkError, 1000);
+                    
+                    // Debug informacije
+                    if (checkRead.Count == 0 && checkError.Count == 0)
+                    {
+                        Console.WriteLine("Nema događaja - timeout");
+                    }
 
                     if (checkRead.Count > 0)
                     {
+                        Console.WriteLine($"Desilo se {checkRead.Count} dogadjaja\n");
                         foreach (var s in checkRead)
                         {
                             EndPoint rmt = new IPEndPoint(IPAddress.Any, 0);
 
                             int n = s.ReceiveFrom(buffer, ref rmt);
                             string message = Encoding.UTF8.GetString(buffer, 0, n);
+                            Console.WriteLine($"Primljena poruka: {message} \nSocket posiljaoca: {rmt} \nSocket primaoca: {s.LocalEndPoint}");
+                            
                             if (s == socketA)
                             {
                                 epA = rmt;
                                 match.State.PaddleA_Y = Input(match.State.PaddleA_Y, message);
-
                             }
                             else if (s == socketB)
                             {
                                 epB = rmt;
                                 match.State.PaddleB_Y = Input(match.State.PaddleB_Y, message);
                             }
+                            
                             if (message.Equals("kraj"))
                             {
                                 Console.WriteLine("Igrac je poslao kraj");
@@ -192,10 +207,24 @@ namespace Server
                         foreach (var s in checkError)
                         {
                             Console.WriteLine($"Greska na socketu: {s.LocalEndPoint}");
-
                             Console.WriteLine("Zatvaram socket zbog greske...");
                             s.Close();
                             kraj = true;
+                        }
+                    }
+
+                    // Timeout handling - ako nema događaja, nastavi sa igrom
+                    if (checkRead.Count == 0 && checkError.Count == 0)
+                    {
+                        // Nema događaja, nastavi sa igrom
+                        if (Console.KeyAvailable)
+                        {
+                            if (Console.ReadKey().Key == ConsoleKey.Escape)
+                            {
+                                Console.WriteLine("Server prekida rad...");
+                                kraj = true;
+                                break;
+                            }
                         }
                     }
 
@@ -204,16 +233,25 @@ namespace Server
                     string payload = JsonSerializer.Serialize(state);
                     byte[] data = Encoding.UTF8.GetBytes(payload);
                     if (epA != null)
-                        socketA.SendTo(data, epA);
+                    {
+                        // Šaljemo na klijentski port (7000+)
+                        IPEndPoint clientEndPointA = new IPEndPoint(IPAddress.Parse("127.0.0.1"), match.UdpPortA + 1000);
+                        int bytesSentA = socketA.SendTo(data, 0, data.Length, SocketFlags.None, clientEndPointA);
+                        Console.WriteLine($"Uspesno poslato {bytesSentA} bajtova ka {clientEndPointA}");
+                    }
                     if (epB != null)
-                        socketB.SendTo(data, epB);
+                    {
+                        // Šaljemo na klijentski port (7000+)
+                        IPEndPoint clientEndPointB = new IPEndPoint(IPAddress.Parse("127.0.0.1"), match.UdpPortB + 1000);
+                        int bytesSentB = socketB.SendTo(data, 0, data.Length, SocketFlags.None, clientEndPointB);
+                        Console.WriteLine($"Uspesno poslato {bytesSentB} bajtova ka {clientEndPointB}");
+                    }
 
                 }
             }
             catch (SocketException ex)
             {
-                Console.WriteLine(ex.Message);
-
+                Console.WriteLine($"Doslo je do greske: {ex.SocketErrorCode}");
             }
             finally
             {
@@ -360,12 +398,23 @@ namespace Server
             var matches = server.CreateMatch();
             server.NotifyPlayers(matches);
 
+            // Pokretanje svih mečeva paralelno
+            var matchTasks = new List<Task>();
             foreach (var match in matches)
             {
-                server.StartMatch(match);
-                server.LogResult(match);
+                matchTasks.Add(Task.Run(() => {
+                    server.StartMatch(match);
+                    server.LogResult(match);
+                }));
             }
+            
+            // Čekanje da se svi mečevi završe
+            Task.WaitAll(matchTasks.ToArray());
             server.PrintRankingTable();
+            
+            Console.WriteLine("Server zavrsava sa radom");
+            Console.WriteLine("Pritisnite bilo koji taster za izlaz...");
+            Console.ReadKey();
         }
 
     }
