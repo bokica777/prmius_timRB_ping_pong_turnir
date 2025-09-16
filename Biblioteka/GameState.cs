@@ -6,10 +6,11 @@ using System.Threading.Tasks;
 
 namespace Biblioteka
 {
-    public class GameState
+    [Serializable]
+    public class GameState 
     {
         public const int Height = 20, Width = 40, PaddleH = 4;
-
+       
         public int BallX { get; set; } = Width / 2;
         public int BallY { get; set; } = Height / 2;
         public int BallVX { get; set; } = 1;
