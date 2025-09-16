@@ -104,6 +104,9 @@ namespace Client
                 udpSocket.Blocking = false;
 
                 Console.WriteLine($"UDP socket vezan na port {udpPort}");
+                Console.WriteLine("Pritisnite ENTER da počnete igru...");
+                Console.ReadLine(); // Čeka da korisnik pritisne ENTER
+                
                 gameRunning = true;
 
                 // Pokretanje thread-a za slušanje UDP poruka
@@ -134,16 +137,20 @@ namespace Client
             {
                 while (gameRunning)
                 {
-                    if (udpSocket.Available > 0)
+                    if (udpSocket != null && udpSocket.Available > 0)
                     {
                         byte[] buffer = new byte[1024];
                         EndPoint remoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
                         int receivedBytes = udpSocket.ReceiveFrom(buffer, ref remoteEndPoint);
                         
                         string jsonData = Encoding.UTF8.GetString(buffer, 0, receivedBytes);
-                        currentGameState = JsonSerializer.Deserialize<GameState>(jsonData);
+                        var newState = JsonSerializer.Deserialize<GameState>(jsonData);
+                        if (newState != null)
+                        {
+                            currentGameState = newState;
+                        }
                     }
-                    Thread.Sleep(16); // ~60 FPS
+                    Thread.Sleep(50); // 20 FPS - manje CPU usage
                 }
             }
             catch (Exception ex)
@@ -216,16 +223,20 @@ namespace Client
             {
                 while (gameRunning)
                 {
-                    Console.Clear();
+                    // Koristimo SetCursorPosition umesto Clear za bolje performanse
+                    Console.SetCursorPosition(0, 0);
+                    
                     Console.WriteLine($"=== PING PONG - {username} ===");
                     Console.WriteLine($"Rezultat: {currentGameState.ScoreA} - {currentGameState.ScoreB}");
                     Console.WriteLine("Kontrole: ↑ ↓ (strelicama), ESC (izlaz)");
+                    Console.WriteLine($"Ball: ({currentGameState.BallX}, {currentGameState.BallY})");
+                    Console.WriteLine($"PaddleA: {currentGameState.PaddleA_Y}, PaddleB: {currentGameState.PaddleB_Y}");
                     Console.WriteLine();
 
                     // Crtanje terena
                     DrawGameField();
                     
-                    Thread.Sleep(100); // 10 FPS za prikaz
+                    Thread.Sleep(200); // 5 FPS za prikaz - manje treperenje
                 }
             }
             catch (Exception ex)

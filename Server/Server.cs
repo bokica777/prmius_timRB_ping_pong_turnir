@@ -113,8 +113,9 @@ namespace Server
         {
             foreach (var match in matches)
             {
-                string messageA = $"\n Protivnik: {match.B.username}, UDP port: {match.UdpPortA}";
-                string messageB = $"\n Protivnik: {match.A.username}, UDP port: {match.UdpPortB}";
+                // Klijenti koriste portove 7000+ za slušanje, server koristi 6000+ za slanje
+                string messageA = $"\n Protivnik: {match.B.username}, UDP port: {match.UdpPortA + 1000}";
+                string messageB = $"\n Protivnik: {match.A.username}, UDP port: {match.UdpPortB + 1000}";
                 SendTcp(match.A.tcpSocket, messageA);
                 SendTcp(match.B.tcpSocket, messageB);
             }
