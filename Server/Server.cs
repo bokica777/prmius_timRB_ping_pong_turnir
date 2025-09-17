@@ -345,14 +345,16 @@ namespace Server
             else if (s.BallY >= GameState.Height) { s.BallY = GameState.Height - 1; s.BallVY = -s.BallVY; }
 
             // sudar sa reketima
-            if (s.BallX == 1 && Overlaps(s.BallY, s.PaddleA_Y))
+            if (s.BallVX < 0 && s.BallX <= 1 && Overlaps(s.BallY, s.PaddleA_Y))
             {
+                s.BallX = 1;
                 int spin = Spin(s.BallY, s.PaddleA_Y);
                 s.BallVX = +BALL_SPEED_X;
                 s.BallVY = (int)Math.Clamp(Math.Round(s.BallVY * VY_DAMP) + spin, -1, +1);
             }
-            if (s.BallX == GameState.Width - 2 && Overlaps(s.BallY, s.PaddleB_Y))
+            if (s.BallVX > 0 && s.BallX >= GameState.Width - 2 && Overlaps(s.BallY, s.PaddleB_Y))
             {
+                s.BallX = GameState.Width - 2;
                 int spin = Spin(s.BallY, s.PaddleB_Y);
                 s.BallVX = -BALL_SPEED_X;
                 s.BallVY = (int)Math.Clamp(Math.Round(s.BallVY * VY_DAMP) + spin, -1, +1);
