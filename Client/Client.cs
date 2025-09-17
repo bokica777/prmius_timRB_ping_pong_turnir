@@ -21,7 +21,7 @@ namespace Client
 
         private readonly object _stateLock = new object();
         private volatile string _lastServerMessage = "";
-        private int _uiTop = 0; // početna Y pozicija render oblasti
+        private int _uiTop = 0; 
 
         public Client(string username)
         {
@@ -29,7 +29,7 @@ namespace Client
             this.currentGameState = new GameState();
         }
 
-        // TCP helpers
+        // TCP pomagaci
         private static string Procitaj(Socket s)
         {
             byte[] buf = new byte[1024];
@@ -71,7 +71,7 @@ namespace Client
                 while (true)
                 {
                     var rd = new List<Socket> { tcpSocket };
-                    Socket.Select(rd, null, null, 500_000); // 0.5s
+                    Socket.Select(rd, null, null, 500_000);
 
                     if (rd.Count > 0)
                     {
@@ -103,7 +103,7 @@ namespace Client
                 Console.WriteLine($"Greška u TCP komunikaciji: {ex.Message}");
             }
         }
-
+        // UDP pomagaci
         private void ExtractUdpPort(string message)
         {
             try
@@ -152,26 +152,9 @@ namespace Client
             }
         }
 
-        // ===== Binarni prijem GameState-a (vežbe-style bez BinaryFormatter-a) =====
-        private static GameState DeserializeGameState(byte[] buf, int len)
-        {
-            using var ms = new MemoryStream(buf, 0, len);
-            using var br = new BinaryReader(ms);
-            var s = new GameState();
-            s.BallX = br.ReadInt32();
-            s.BallY = br.ReadInt32();
-            s.BallVX = br.ReadInt32();
-            s.BallVY = br.ReadInt32();
-            s.PaddleA_Y = br.ReadInt32();
-            s.PaddleB_Y = br.ReadInt32();
-            s.ScoreA = br.ReadInt32();
-            s.ScoreB = br.ReadInt32();
-            return s;
-        }
-
         private void ListenForUdpMessages()
         {
-            const int SELECT_TIMEOUT_US = 50_000; // 50 ms
+            const int SELECT_TIMEOUT_US = 50_000;
 
             try
             {
@@ -214,6 +197,43 @@ namespace Client
             }
         }
 
+        private void SendUdpCommand(string command)
+        {
+            try
+            {
+                if (udpSocket != null)
+                {
+                    int serverPort = udpPort - 1000;
+                    IPEndPoint serverUdpEndPoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), serverPort);
+                    byte[] data = Encoding.UTF8.GetBytes(command);
+                    int bytesSent = udpSocket.SendTo(data, 0, data.Length, SocketFlags.None, serverUdpEndPoint);
+
+                    _lastServerMessage = $"TX {bytesSent}B: \"{command}\" → {serverUdpEndPoint}";
+                }
+            }
+            catch (SocketException ex)
+            {
+                _lastServerMessage = $"TX error: {ex.SocketErrorCode}";
+            }
+        }
+
+        //Binarni prijem GameState-a
+        private static GameState DeserializeGameState(byte[] buf, int len)
+        {
+            using var ms = new MemoryStream(buf, 0, len);
+            using var br = new BinaryReader(ms);
+            var s = new GameState();
+            s.BallX = br.ReadInt32();
+            s.BallY = br.ReadInt32();
+            s.BallVX = br.ReadInt32();
+            s.BallVY = br.ReadInt32();
+            s.PaddleA_Y = br.ReadInt32();
+            s.PaddleB_Y = br.ReadInt32();
+            s.ScoreA = br.ReadInt32();
+            s.ScoreB = br.ReadInt32();
+            return s;
+        }
+
         private void HandleUserInput()
         {
             try
@@ -238,7 +258,7 @@ namespace Client
                         if (!string.IsNullOrEmpty(command))
                             SendUdpCommand(command);
                     }
-                    Thread.Sleep(50); // brža reakcija na input
+                    Thread.Sleep(50);
                 }
             }
             catch (Exception ex)
@@ -247,31 +267,11 @@ namespace Client
             }
         }
 
-        private void SendUdpCommand(string command)
-        {
-            try
-            {
-                if (udpSocket != null)
-                {
-                    int serverPort = udpPort - 1000;
-                    IPEndPoint serverUdpEndPoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), serverPort);
-                    byte[] data = Encoding.UTF8.GetBytes(command);
-                    int bytesSent = udpSocket.SendTo(data, 0, data.Length, SocketFlags.None, serverUdpEndPoint);
-
-                    _lastServerMessage = $"TX {bytesSent}B: \"{command}\" → {serverUdpEndPoint}";
-                }
-            }
-            catch (SocketException ex)
-            {
-                _lastServerMessage = $"TX error: {ex.SocketErrorCode}";
-            }
-        }
-
         private void DisplayGame()
         {
             try
             {
-                const int DISPLAY_MS = 90; // usklađeno sa TICK_MS na serveru
+                const int DISPLAY_MS = 90;
                 Console.CursorVisible = false;
 
                 _uiTop = Console.CursorTop;
@@ -311,7 +311,6 @@ namespace Client
                 Console.CursorVisible = true;
             }
         }
-
         private string PadToFieldWidth(string s)
         {
             int w = GameState.Width;

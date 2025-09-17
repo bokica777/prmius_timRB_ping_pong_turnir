@@ -24,11 +24,10 @@ namespace Server
         private Socket serverSocket;
         private static readonly object _logLock = new object();
 
-        // >>> TUNABLES <<<
-        private const int TICK_MS = 90;   // brži game loop
-        private const int BALL_SPEED_X = 2;    // brža lopta horizontalno (stalna brzina)
-        private const double VY_DAMP = 0.5;  // prigušenje vertikale pri odbijanju (manji ugao)
-        private const int STEP = 2;    // brže pomeranje reketa
+        private const int TICK_MS = 90;  
+        private const int BALL_SPEED_X = 2;    
+        private const double VY_DAMP = 0.5;  
+        private const int STEP = 2;    
 
         public Server(int numPlayers, int pointsForWin, int maxUdpPorts)
         {
@@ -40,7 +39,7 @@ namespace Server
             this.udpPortPool = new Queue<int>();
         }
 
-        // TCP helpers (vežbe-style)
+        // TCP pomagaci
         private static Socket NapraviTcpListener(int port, int backlog)
         {
             var s = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
@@ -54,19 +53,20 @@ namespace Server
             s.Send(data);
         }
 
+        private void SendTcp(Socket socket, string message) => Posalji(socket, message);
+
         public void Initialize()
         {
             for (int port = 6000; port < 6000 + maxUdpPorts; port++)
                 udpPortPool.Enqueue(port);
 
             serverSocket = NapraviTcpListener(50001, numPlayers + 2);
-            serverSocket.Blocking = false; // non-blocking accept
+            serverSocket.Blocking = false; 
 
             Console.WriteLine("Server je pokrenut...");
             Console.WriteLine($"Server spreman za {numPlayers} igraca, do {pointsForWin} poena, UDP portova: {maxUdpPorts}");
         }
 
-        // Non-blocking registracija više klijenata
         public void RegisterPlayers()
         {
             Console.Write($"Cekam {numPlayers} igraca...\n");
@@ -79,7 +79,7 @@ namespace Server
                 readList.AddRange(pending);
                 var errList = new List<Socket>(readList);
 
-                Socket.Select(readList, null, errList, 200_000); // 200ms
+                Socket.Select(readList, null, errList, 200_000);
 
                 if (readList.Contains(serverSocket))
                 {
@@ -121,7 +121,7 @@ namespace Server
                     }
                     catch (SocketException se) when (se.SocketErrorCode == SocketError.WouldBlock)
                     {
-                        // nema još podataka – sledeći krug
+                        
                     }
                 }
 
@@ -141,17 +141,6 @@ namespace Server
             string allRegisteredMsg = "\nSvi igraci su registrovani. Cekajte na protivnike...";
             foreach (var player in players)
                 SendTcp(player.tcpSocket, allRegisteredMsg);
-        }
-
-        private string ReceiveUsername(Socket clientSocket)
-        {
-            try
-            {
-                byte[] buffer = new byte[1024];
-                int n = clientSocket.Receive(buffer);
-                return n > 0 ? Encoding.UTF8.GetString(buffer, 0, n).Trim() : "";
-            }
-            catch { return ""; }
         }
 
         public List<Match> CreateMatch()
@@ -196,9 +185,9 @@ namespace Server
             }
         }
 
-        private void SendTcp(Socket socket, string message) => Posalji(socket, message);
 
-        // ===== Binarna serijalizacija GameState-a (vežbe-style bez BinaryFormatter-a) =====
+
+        //Binarni prijem GameState-a
         private static byte[] SerializeGameState(GameState s)
         {
             using var ms = new MemoryStream();
@@ -224,10 +213,10 @@ namespace Server
             catch { }
         }
 
-        // ====== MATCH LOOP (UDP) ======
+        // UDP match loop
         public void StartMatch(Match match)
         {
-            const int SELECT_TIMEOUT_US = 50_000; // 50 ms
+            const int SELECT_TIMEOUT_US = 50_000;
 
             Socket socketA = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
             Socket socketB = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
@@ -253,13 +242,11 @@ namespace Server
             bool kraj = false;
             var state = match.State;
 
-            // safety: pokreni loptu ako je stala
             if (state.BallVX == 0 && state.BallVY == 0) state.BallVX = BALL_SPEED_X;
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
             long last = 0;
 
-            // inicijalni frame
             TrySendState(socketA, clientEndPointA, state);
             TrySendState(socketB, clientEndPointB, state);
 
@@ -338,7 +325,6 @@ namespace Server
             return (s.ScoreA > s.ScoreB) ? match.A.username : match.B.username;
         }
 
-        // INPUT (brži reketi)
         private int Input(int currentY, string msg)
         {
             msg = (msg ?? "").Trim().ToUpperInvariant();
@@ -349,17 +335,16 @@ namespace Server
             return Math.Clamp(newY, lo, hi);
         }
 
-        // Fizika sa bržom loptom i manjim uglom odbitka
         private void updatePhysics(GameState s)
         {
             s.BallX += s.BallVX;
             s.BallY += s.BallVY;
 
-            // zidovi (Y) – odskok
+            // zidovi
             if (s.BallY < 0) { s.BallY = 0; s.BallVY = -s.BallVY; }
             else if (s.BallY >= GameState.Height) { s.BallY = GameState.Height - 1; s.BallVY = -s.BallVY; }
 
-            // sudar sa reketima (stalna horizontalna brzina ±BALL_SPEED_X, priguši vertikalnu i dodaj slab spin)
+            // sudar sa reketima
             if (s.BallX == 1 && Overlaps(s.BallY, s.PaddleA_Y))
             {
                 int spin = Spin(s.BallY, s.PaddleA_Y);
@@ -373,7 +358,7 @@ namespace Server
                 s.BallVY = (int)Math.Clamp(Math.Round(s.BallVY * VY_DAMP) + spin, -1, +1);
             }
 
-            // poeni kada lopta prođe levo/desno
+            // poeni
             if (s.BallX < 0) { s.ScoreB++; ResetAfterScore(s, false); return; }
             if (s.BallX >= GameState.Width) { s.ScoreA++; ResetAfterScore(s, true); return; }
         }
@@ -381,13 +366,12 @@ namespace Server
         private static bool Overlaps(int ballY, int paddleY)
             => ballY >= paddleY && ballY < paddleY + GameState.PaddleH;
 
-        // slabiji spin: samo ako udari dalje od centra (manji ugao odbijanja)
         private static int Spin(int ballY, int paddleY)
         {
             int center = paddleY + GameState.PaddleH / 2;
             int delta = ballY - center;
-            if (Math.Abs(delta) >= 2) return Math.Sign(delta); // blagi spin na ivicama
-            return 0; // oko centra – skoro ravan odbitak
+            if (Math.Abs(delta) >= 2) return Math.Sign(delta);
+            return 0;
         }
 
         private static void ResetAfterScore(GameState s, bool serveA)
@@ -395,7 +379,7 @@ namespace Server
             s.BallX = GameState.Width / 2;
             s.BallY = GameState.Height / 2;
 
-            s.BallVX = serveA ? +BALL_SPEED_X : -BALL_SPEED_X; // brža lopta posle servisa
+            s.BallVX = serveA ? +BALL_SPEED_X : -BALL_SPEED_X;
             s.BallVY = 0;
 
             s.PaddleA_Y = GameState.Height / 2 - GameState.PaddleH / 2;
